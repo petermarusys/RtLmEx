@@ -91,13 +91,22 @@ class MainActivity : ComponentActivity() {
 
         // Trigger initialization on launch
         LaunchedEffect(Unit) {
+            if (!EmManager.isInitialized) {
+                try {
+                    withContext(Dispatchers.IO) {
+                        EmManager.initialize()
+                    }
+                } catch (e: Exception) {
+                    Log.e("Chat", "Em Initialization Error", e)
+                }
+            }
             if (!LmManager.isInitialized) {
                 try {
                     withContext(Dispatchers.IO) {
                         LmManager.initialize(context)
                     }
                 } catch (e: Exception) {
-                    Log.e("Chat", "Initialization Error", e)
+                    Log.e("Chat", "Lm Initialization Error", e)
                 }
             }
         }
@@ -111,7 +120,10 @@ class MainActivity : ComponentActivity() {
         }
 
         DisposableEffect(Unit) {
-            onDispose { LmManager.close() }
+            onDispose {
+                EmManager.close()
+                LmManager.close()
+            }
         }
 
         Column(
@@ -206,7 +218,10 @@ class MainActivity : ComponentActivity() {
 
         scope.launch {
             try {
-                val flow = LmManager.sendMessageAsync(prompt.trim())
+                val ragPrompt = EmManager.ragPrompt(prompt.trim())
+                Log.i("RagPrompt", ragPrompt)
+
+                val flow = LmManager.sendMessageAsync(ragPrompt.trim())
                 if (flow != null) {
                     withContext(Dispatchers.IO) {
                         var accumulatedText = ""
