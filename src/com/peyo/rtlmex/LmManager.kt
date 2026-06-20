@@ -28,6 +28,24 @@ object LmManager {
 
         try {
             val config = EngineConfig(
+                modelPath = "/data/local/tmp/gemma-4-E2B-it_qualcomm_sm8750.litertlm",
+                backend = Backend.NPU(nativeLibraryDir = nativeLibDir),
+                cacheDir = context.getExternalFilesDir(null)?.absolutePath
+            )
+            val newEngine = Engine(config)
+            newEngine.initialize()
+            engine = newEngine
+            conversation = newEngine.createConversation()
+            activeBackend = "Qualcomm NPU"
+            isInitialized = true
+            Log.i("LmManager", "Engine successfully initialized with Qualcomm NPU backend.")
+            return
+        } catch (e: Exception) {
+            Log.w("LmManager", "Failed to initialize NPU backend: ${e.message}. Falling back to CPU.", e)
+        }
+
+        try {
+            val config = EngineConfig(
                 modelPath = "/data/local/tmp/gemma-4-E2B-it.litertlm",
                 backend = Backend.CPU(),
                 cacheDir = context.getExternalFilesDir(null)?.absolutePath
