@@ -94,7 +94,7 @@ class MainActivity : ComponentActivity() {
             if (!EmManager.isInitialized) {
                 try {
                     withContext(Dispatchers.IO) {
-                        EmManager.initialize()
+                        EmManager.initialize(context)
                     }
                 } catch (e: Exception) {
                     Log.e("Chat", "Em Initialization Error", e)
@@ -217,48 +217,72 @@ class MainActivity : ComponentActivity() {
         addMessage(Message(false, "..."))
 
         scope.launch {
-            try {
-                val ragPrompt = EmManager.ragPrompt(prompt.trim())
+            var ragPrompt: String
+
+            withContext(Dispatchers.IO) {
+                ragPrompt = EmManager.ragPrompt(prompt.trim())
                 Log.i("RagPrompt", ragPrompt)
+            }
 
-                val flow = LmManager.sendMessageAsync(ragPrompt.trim())
-                if (flow != null) {
-                    withContext(Dispatchers.IO) {
-                        var accumulatedText = ""
-                        var tokenCount = 0
-                        val startTime = System.currentTimeMillis()
-                        var lastLogTime = startTime
+            if (ragPrompt == "Not Found") {
+                updateLastMessage(Message(false, "I don't know"))
+            } else {
+                try {
+                    val flow = LmManager.sendMessageAsync(ragPrompt.trim())
+                    if (flow != null) {
+                        withContext(Dispatchers.IO) {
+                            var accumulatedText = ""
+                            var tokenCount = 0
+                            val startTime = System.currentTimeMillis()
+                            var lastLogTime = startTime
 
-                        flow.collect { message ->
-                            val chunk = message.contents.toString()
-                            accumulatedText += chunk
-                            tokenCount++
+                            flow.collect { message ->
+                                val chunk = message.contents.toString()
+                                accumulatedText += chunk
+                                tokenCount++
 
-                            val currentTime = System.currentTimeMillis()
-                            if (currentTime - lastLogTime >= 3000) {
-                                val elapsedSeconds = (currentTime - startTime) / 1000.0
-                                val rate = if (elapsedSeconds > 0) tokenCount / elapsedSeconds else 0.0
-                                Log.i("TokenRate", "Current token rate: %.2f tokens/sec (tokens: %d, time: %.2fs)".format(rate, tokenCount, elapsedSeconds))
-                                lastLogTime = currentTime
+                                val currentTime = System.currentTimeMillis()
+                                if (currentTime - lastLogTime >= 3000) {
+                                    val elapsedSeconds = (currentTime - startTime) / 1000.0
+                                    val rate =
+                                        if (elapsedSeconds > 0) tokenCount / elapsedSeconds else 0.0
+                                    Log.i(
+                                        "TokenRate",
+                                        "Current token rate: %.2f tokens/sec (tokens: %d, time: %.2fs)".format(
+                                            rate,
+                                            tokenCount,
+                                            elapsedSeconds
+                                        )
+                                    )
+                                    lastLogTime = currentTime
+                                }
+
+                                withContext(Dispatchers.Main) {
+                                    updateLastMessage(Message(false, accumulatedText))
+                                }
                             }
 
-                            withContext(Dispatchers.Main) {
-                                updateLastMessage(Message(false, accumulatedText))
-                            }
+                            // Print final rates
+                            val endTime = System.currentTimeMillis()
+                            val totalElapsedSeconds = (endTime - startTime) / 1000.0
+                            val finalRate =
+                                if (totalElapsedSeconds > 0) tokenCount / totalElapsedSeconds else 0.0
+                            Log.i(
+                                "TokenRate",
+                                "Final token rate: %.2f tokens/sec (total tokens: %d, total time: %.2fs)".format(
+                                    finalRate,
+                                    tokenCount,
+                                    totalElapsedSeconds
+                                )
+                            )
                         }
-
-                        // Print final rates
-                        val endTime = System.currentTimeMillis()
-                        val totalElapsedSeconds = (endTime - startTime) / 1000.0
-                        val finalRate = if (totalElapsedSeconds > 0) tokenCount / totalElapsedSeconds else 0.0
-                        Log.i("TokenRate", "Final token rate: %.2f tokens/sec (total tokens: %d, total time: %.2fs)".format(finalRate, tokenCount, totalElapsedSeconds))
+                    } else {
+                        updateLastMessage(Message(false, "Error: Conversation not initialized"))
                     }
-                } else {
-                    updateLastMessage(Message(false, "Error: Conversation not initialized"))
+                } catch (e: Exception) {
+                    Log.e("Chat", "Model Error", e)
+                    updateLastMessage(Message(false, "Error: ${e.message}"))
                 }
-            } catch (e: Exception) {
-                Log.e("Chat", "Model Error", e)
-                updateLastMessage(Message(false, "Error: ${e.message}"))
             }
         }
     }

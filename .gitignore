@@ -4,3 +4,5 @@ gradlew.bat
 *.iml
 .*
 !.gitignore
+scripts/*.tflite
+scripts/*.model

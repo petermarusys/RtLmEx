@@ -1,5 +1,5 @@
 package com.peyo.rtlmex
-
+ 
 import android.content.Context
 import android.util.Log
 import com.google.ai.edge.localagents.rag.models.GemmaEmbeddingModel
@@ -7,15 +7,16 @@ import com.google.ai.edge.localagents.rag.models.EmbeddingRequest
 import com.google.ai.edge.localagents.rag.models.EmbedData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-
+import java.nio.ByteBuffer
+ 
 import kotlin.math.sqrt
-
+ 
 object EmManager {
     var isInitialized = false
         private set
     var activeBackend = "None"
         private set
-
+ 
     private fun cosineSimilarity(v1: FloatArray, v2: FloatArray): Float {
         var dotProduct = 0.0f
         var normA = 0.0f
@@ -27,20 +28,43 @@ object EmManager {
         }
         return (dotProduct / (sqrt(normA) * sqrt(normB))).toFloat()
     }
-
+ 
     private val embeddingModelPath = "/data/local/tmp/embeddinggemma-300M_seq256_mixed-precision.tflite"
     private val sentencePieceModelPath = "/data/local/tmp/sentencepiece.model"
     private var embedder: GemmaEmbeddingModel? = null
-    private val localDatabase = listOf(
-        "The internal IP address for the testing server is 192.168.1.100.",
-        "Employee expense reports are due on the last Friday of the month.",
-        "The office WiFi password is 'GemmaLocal2026'."
-    )
-
-    suspend fun initialize() = withContext(Dispatchers.IO) {
+ 
+    data class DatabaseEntry(val text: String, val embedding: FloatArray)
+    private val localDatabase = mutableListOf<DatabaseEntry>()
+ 
+    suspend fun initialize(context: Context) = withContext(Dispatchers.IO) {
         if (isInitialized) return@withContext
-
+        Log.i("EmManager", "Initializing EmManager")
+ 
         try {
+            val fbBytes = context.assets.open("ko.fb").use { it.readBytes() }
+            val byteBuffer = ByteBuffer.wrap(fbBytes)
+            val dbEmbeddings = DatabaseEmbeddings.getRootAsDatabaseEmbeddings(byteBuffer)
+
+            localDatabase.clear()
+            var index = 0
+            context.assets.open("ko.txt").bufferedReader().useLines { lines ->
+                lines.forEach { line ->
+                    if (line.isNotBlank() && index < dbEmbeddings.embeddingsLength) {
+                        val emb = dbEmbeddings.embeddings(index)
+                        if (emb != null) {
+                            val vector = FloatArray(emb.valuesLength)
+                            for (j in 0 until emb.valuesLength) {
+                                vector[j] = emb.values(j)
+                            }
+                            val text = line.substringAfter("[Answer]").trim()
+                            localDatabase.add(DatabaseEntry(text, vector))
+                        }
+                        index++
+                    }
+                }
+            }
+            Log.i("EmManager", "Loaded ${localDatabase.size} items from ko.txt and ko.fb")
+ 
             embedder = GemmaEmbeddingModel(embeddingModelPath, sentencePieceModelPath, false)
             activeBackend = "CPU"
             isInitialized = true
@@ -77,40 +101,29 @@ object EmManager {
         var bestMatch = ""
         var highestScore = -1f
 
-        for (doc in localDatabase) {
-            val docRequest = EmbeddingRequest.builder<String>()
-                .addEmbedData(EmbedData.create(doc, EmbedData.TaskType.RETRIEVAL_DOCUMENT))
-                .build()
-            val docResultFuture = embedderInstance.getEmbeddings(docRequest)
-            val docResult: List<Float>? = try {
-                docResultFuture.get()
-            } catch (e: Exception) {
-                Log.e("EmManager", "Failed to get embeddings for doc: ${e.message}", e)
-                null
-            }
-            val docVector: FloatArray? = docResult?.toFloatArray()
-            if (docVector != null) {
-                val similarityScore = cosineSimilarity(queryVector, docVector)
-
-                if (similarityScore > highestScore) {
-                    highestScore = similarityScore
-                    bestMatch = doc
-                }
+        for (entry in localDatabase) {
+            val similarityScore = cosineSimilarity(queryVector, entry.embedding)
+            if (similarityScore > highestScore) {
+                highestScore = similarityScore
+                bestMatch = entry.text
             }
         }
-        Log.i("Rag", "Highest score: $highestScore")
-        // --- STEP 3: GENERATE THE ANSWER ---
-        val ragPrompt = """
-            Answer the question using ONLY the provided context. 
-            If the answer is not in the context, say "I don't know".
-            
-            Context: ${if (highestScore >= 0.2) bestMatch else "None found."}
-            Question: $userQuery
-            Answer:
+        Log.i("RagPrompt", "Highest score: $highestScore")
+        if (highestScore >= 0.28) {
+            val ragPrompt = """
+            <start_of_turn> user
+              <context>
+                $bestMatch
+              </context>
+              Answer the question based on the provided <context> above:
+              Question: $userQuery  
+            <end_of_turn>
+            <start_of_turn> model
         """.trimIndent()
-
-        // Generate response via LiteRT-LM
-        ragPrompt
+            ragPrompt
+        } else {
+            "Not Found"
+        }
     }
 
     fun close() {

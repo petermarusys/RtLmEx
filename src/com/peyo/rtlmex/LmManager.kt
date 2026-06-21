@@ -28,7 +28,7 @@ object LmManager {
 
         try {
             val config = EngineConfig(
-                modelPath = "/data/local/tmp/gemma-4-E2B-it.litertlm",
+                modelPath = "/data/local/tmp/gemma3-1b-it-int4.litertlm",
                 backend = Backend.CPU(),
                 cacheDir = context.getExternalFilesDir(null)?.absolutePath
             )

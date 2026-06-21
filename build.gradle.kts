@@ -53,6 +53,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.13.1")
+    implementation("com.google.flatbuffers:flatbuffers-java:24.3.25")
     implementation("com.google.ai.edge.localagents:localagents-rag:0.3.0")
     implementation("com.google.protobuf:protobuf-javalite:3.25.3")
     debugImplementation(libs.androidx.compose.ui.tooling)
