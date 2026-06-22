@@ -45,13 +45,24 @@ object EmManager {
         Log.i("EmManager", "Initializing EmManager")
  
         try {
-            val fbBytes = context.assets.open("ko.fb").use { it.readBytes() }
+            val locale = java.util.Locale.getDefault()
+            val lang = locale.language.lowercase()
+            val prefix = when (lang) {
+                "ko" -> "ko"
+                "fr" -> "fr"
+                else -> "en"
+            }
+            val fbFile = "$prefix.fb"
+            val jsonlFile = "$prefix.jsonl"
+            Log.i("EmManager", "System locale: $locale. Loading database from $fbFile and $jsonlFile")
+
+            val fbBytes = context.assets.open(fbFile).use { it.readBytes() }
             val byteBuffer = ByteBuffer.wrap(fbBytes)
             val dbEmbeddings = DatabaseEmbeddings.getRootAsDatabaseEmbeddings(byteBuffer)
 
             localDatabase.clear()
             var index = 0
-            context.assets.open("ko.jsonl").bufferedReader().useLines { lines ->
+            context.assets.open(jsonlFile).bufferedReader().useLines { lines ->
                 lines.forEach { line ->
                     if (line.isNotBlank() && index < dbEmbeddings.embeddingsLength) {
                         val emb = dbEmbeddings.embeddings(index)
@@ -69,7 +80,7 @@ object EmManager {
                     }
                 }
             }
-            Log.i("EmManager", "Loaded ${localDatabase.size} items from ko.jsonl and ko.fb")
+            Log.i("EmManager", "Loaded ${localDatabase.size} items from $jsonlFile and $fbFile")
  
             embedder = GemmaEmbeddingModel(embeddingModelPath, sentencePieceModelPath, false)
             activeBackend = "CPU"

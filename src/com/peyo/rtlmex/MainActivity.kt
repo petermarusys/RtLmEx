@@ -33,6 +33,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.takeWhile
 
 data class Message(
     val isUser: Boolean,
@@ -103,6 +104,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        EmManager.close()
+        LmManager.close()
     }
 
     @Composable
@@ -268,31 +275,32 @@ class MainActivity : ComponentActivity() {
                             val startTime = System.currentTimeMillis()
                             var lastLogTime = startTime
 
-                            flow.collect { message ->
-                                val chunk = message.contents.toString()
-                                accumulatedText += chunk
-                                tokenCount++
+                            flow.takeWhile { tokenCount < 500 }
+                                .collect { message ->
+                                    val chunk = message.contents.toString()
+                                    accumulatedText += chunk
+                                    tokenCount++
 
-                                val currentTime = System.currentTimeMillis()
-                                if (currentTime - lastLogTime >= 3000) {
-                                    val elapsedSeconds = (currentTime - startTime) / 1000.0
-                                    val rate =
-                                        if (elapsedSeconds > 0) tokenCount / elapsedSeconds else 0.0
-                                    Log.i(
-                                        "TokenRate",
-                                        "Current token rate: %.2f tokens/sec (tokens: %d, time: %.2fs)".format(
-                                            rate,
-                                            tokenCount,
-                                            elapsedSeconds
+                                    val currentTime = System.currentTimeMillis()
+                                    if (currentTime - lastLogTime >= 3000) {
+                                        val elapsedSeconds = (currentTime - startTime) / 1000.0
+                                        val rate =
+                                            if (elapsedSeconds > 0) tokenCount / elapsedSeconds else 0.0
+                                        Log.i(
+                                            "TokenRate",
+                                            "Current token rate: %.2f tokens/sec (tokens: %d, time: %.2fs)".format(
+                                                rate,
+                                                tokenCount,
+                                                elapsedSeconds
+                                            )
                                         )
-                                    )
-                                    lastLogTime = currentTime
-                                }
+                                        lastLogTime = currentTime
+                                    }
 
-                                withContext(Dispatchers.Main) {
-                                    updateLastMessage(Message(false, accumulatedText))
+                                    withContext(Dispatchers.Main) {
+                                        updateLastMessage(Message(false, accumulatedText))
+                                    }
                                 }
-                            }
 
                             // Print final rates
                             val endTime = System.currentTimeMillis()
@@ -307,6 +315,9 @@ class MainActivity : ComponentActivity() {
                                     totalElapsedSeconds
                                 )
                             )
+                            if (tokenCount >= 450) {
+                                LmManager.resetConversation()
+                            }
                         }
                     } else {
                         updateLastMessage(Message(false, "Error: Conversation not initialized"))

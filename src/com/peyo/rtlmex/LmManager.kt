@@ -44,6 +44,22 @@ object LmManager {
         }
     }
 
+    fun resetConversation() {
+        val oldConv = conversation
+        conversation = engine?.createConversation()
+        if (oldConv != null) {
+            Thread {
+                try {
+                    Thread.sleep(3000)
+                    oldConv.close()
+                    Log.i("LmManager", "Old conversation closed safely after delay.")
+                } catch (e: Exception) {
+                    Log.w("LmManager", "Failed to close old conversation: ${e.message}")
+                }
+            }.start()
+        }
+    }
+
     fun close() {
         conversation?.close()
         conversation = null

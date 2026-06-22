@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import struct
 import math
@@ -61,13 +62,19 @@ def get_embedding(interpreter, sp, text, input_index, output_index):
     return emb
 
 def main():
+    if len(sys.argv) < 2 or sys.argv[1].lower() not in ["ko", "en", "fr"]:
+        print("Usage: python3 jsonl2fb.py <ko|en|fr>")
+        sys.exit(1)
+        
+    lang = sys.argv[1].lower()
+    
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
     
     model_path = os.path.join(script_dir, "embeddinggemma-300M_seq256_mixed-precision.tflite")
     sp_path = os.path.join(script_dir, "sentencepiece.model")
-    jsonl_path = os.path.join(project_root, "assets", "ko.jsonl")
-    fb_path = os.path.join(project_root, "assets", "ko.fb")
+    jsonl_path = os.path.join(project_root, "assets", f"{lang}.jsonl")
+    fb_path = os.path.join(project_root, "assets", f"{lang}.fb")
     
     print("Loading sentencepiece tokenizer...")
     sp = spm.SentencePieceProcessor(model_file=sp_path)
