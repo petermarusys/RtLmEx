@@ -133,10 +133,10 @@ class MainActivity : ComponentActivity() {
                     Log.e("Chat", "Em Initialization Error", e)
                 }
             }
-            if (!LmManager.isInitialized) {
+            if (!ALmManager.isInitialized) {
                 try {
                     withContext(Dispatchers.IO) {
-                        LmManager.initialize(context)
+                        ALmManager.initialize(context)
                     }
                 } catch (e: Exception) {
                     Log.e("Chat", "Lm Initialization Error", e)
@@ -155,7 +155,7 @@ class MainActivity : ComponentActivity() {
         DisposableEffect(Unit) {
             onDispose {
                 EmManager.close()
-                LmManager.close()
+                ALmManager.close()
             }
         }
 
@@ -267,7 +267,7 @@ class MainActivity : ComponentActivity() {
                 }
                 addMessage(Message(false, "..."))
                 try {
-                    val flow = LmManager.sendMessageAsync(ragPrompt.trim())
+                    val flow = ALmManager.sendMessageAsync(ragPrompt.trim())
                     if (flow != null) {
                         withContext(Dispatchers.IO) {
                             var accumulatedText = ""
@@ -277,7 +277,7 @@ class MainActivity : ComponentActivity() {
 
                             flow.takeWhile { tokenCount < 500 }
                                 .collect { message ->
-                                    val chunk = message.contents.toString()
+                                    val chunk = message
                                     accumulatedText += chunk
                                     tokenCount++
 

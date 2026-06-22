@@ -6,8 +6,8 @@ import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
-import com.google.ai.edge.litertlm.Message
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 
 object LmManager {
     private var engine: Engine? = null
@@ -18,7 +18,11 @@ object LmManager {
     var activeBackend = "None"
         private set
 
-    fun sendMessageAsync(prompt: String): Flow<Message>? = conversation?.sendMessageAsync(prompt)
+    fun sendMessageAsync(prompt: String): Flow<String> = callbackFlow {
+        conversation?.sendMessageAsync(prompt)?.collect {
+            message -> trySend(message.contents.toString())
+        }
+    }
 
     fun initialize(context: Context) {
         if (engine != null) return // Already initialized
