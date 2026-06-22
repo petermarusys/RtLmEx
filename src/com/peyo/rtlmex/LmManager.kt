@@ -6,8 +6,8 @@ import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
-import com.google.ai.edge.litertlm.Message
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 
 object LmManager {
     private var engine: Engine? = null
@@ -18,7 +18,11 @@ object LmManager {
     var activeBackend = "None"
         private set
 
-    fun sendMessageAsync(prompt: String): Flow<Message>? = conversation?.sendMessageAsync(prompt)
+    fun sendMessageAsync(prompt: String): Flow<String> = callbackFlow {
+        conversation?.sendMessageAsync(prompt)?.collect {
+            message -> trySend(message.contents.toString())
+        }
+    }
 
     fun initialize(context: Context) {
         if (engine != null) return // Already initialized
@@ -28,7 +32,7 @@ object LmManager {
 
         try {
             val config = EngineConfig(
-                modelPath = "/data/local/tmp/gemma-4-E2B-it.litertlm",
+                modelPath = "/data/local/tmp/gemma3-1b-it-int4.litertlm",
                 backend = Backend.CPU(),
                 cacheDir = context.getExternalFilesDir(null)?.absolutePath
             )
