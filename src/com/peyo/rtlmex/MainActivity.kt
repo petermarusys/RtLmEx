@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +25,8 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.BitmapFactory
 import androidx.compose.ui.unit.dp
 import com.peyo.rtlmex.ui.theme.RtLmExTheme
 import kotlinx.coroutines.CoroutineScope
@@ -33,17 +36,40 @@ import kotlinx.coroutines.withContext
 
 data class Message(
     val isUser: Boolean,
-    val content: String
+    val content: String,
+    val imagePath: String? = null
 )
 
 
 @Composable
 fun MessageItem(message: Message) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start
     ) {
-        MarkdownText(text = message.content)
+        if (message.imagePath != null && message.imagePath.isNotEmpty()) {
+            val bitmap = remember(message.imagePath) {
+                try {
+                    context.assets.open(message.imagePath).use { inputStream ->
+                        BitmapFactory.decodeStream(inputStream)
+                    }
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .heightIn(max = 300.dp)
+                        .wrapContentWidth()
+                )
+            }
+        } else {
+            MarkdownText(text = message.content)
+        }
     }
 }
 
@@ -214,19 +240,25 @@ class MainActivity : ComponentActivity() {
         if (prompt.isBlank()) return
 
         addMessage(Message(true, prompt.trim()))
-        addMessage(Message(false, "..."))
 
         scope.launch {
+            var image: String
             var ragPrompt: String
 
             withContext(Dispatchers.IO) {
-                ragPrompt = EmManager.ragPrompt(prompt.trim())
+                val result = EmManager.ragPrompt(prompt.trim())
+                image = result.first ?: ""
+                ragPrompt = result.second
                 Log.i("RagPrompt", ragPrompt)
             }
 
             if (ragPrompt == "Not Found") {
-                updateLastMessage(Message(false, "I don't know"))
+                addMessage(Message(false, "I don't know"))
             } else {
+                if (image.isNotEmpty()) {
+                    addMessage(Message(false, "", image))
+                }
+                addMessage(Message(false, "..."))
                 try {
                     val flow = LmManager.sendMessageAsync(ragPrompt.trim())
                     if (flow != null) {

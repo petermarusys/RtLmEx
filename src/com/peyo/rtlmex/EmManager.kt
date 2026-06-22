@@ -8,6 +8,7 @@ import com.google.ai.edge.localagents.rag.models.EmbedData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
+import org.json.JSONObject
  
 import kotlin.math.sqrt
  
@@ -33,9 +34,12 @@ object EmManager {
     private val sentencePieceModelPath = "/data/local/tmp/sentencepiece.model"
     private var embedder: GemmaEmbeddingModel? = null
  
-    data class DatabaseEntry(val text: String, val embedding: FloatArray)
+    data class DatabaseEntry(val text: String, val image: String?, val embedding: FloatArray)
     private val localDatabase = mutableListOf<DatabaseEntry>()
  
+    var lastMatchedImage: String? = null
+        private set
+
     suspend fun initialize(context: Context) = withContext(Dispatchers.IO) {
         if (isInitialized) return@withContext
         Log.i("EmManager", "Initializing EmManager")
@@ -47,7 +51,7 @@ object EmManager {
 
             localDatabase.clear()
             var index = 0
-            context.assets.open("ko.txt").bufferedReader().useLines { lines ->
+            context.assets.open("ko.jsonl").bufferedReader().useLines { lines ->
                 lines.forEach { line ->
                     if (line.isNotBlank() && index < dbEmbeddings.embeddingsLength) {
                         val emb = dbEmbeddings.embeddings(index)
@@ -56,14 +60,16 @@ object EmManager {
                             for (j in 0 until emb.valuesLength) {
                                 vector[j] = emb.values(j)
                             }
-                            val text = line.substringAfter("[Answer]").trim()
-                            localDatabase.add(DatabaseEntry(text, vector))
+                            val json = JSONObject(line)
+                            val answer = json.optString("answer", "")
+                            val image = if (json.has("image") && !json.isNull("image")) json.getString("image") else null
+                            localDatabase.add(DatabaseEntry(answer, image, vector))
                         }
                         index++
                     }
                 }
             }
-            Log.i("EmManager", "Loaded ${localDatabase.size} items from ko.txt and ko.fb")
+            Log.i("EmManager", "Loaded ${localDatabase.size} items from ko.jsonl and ko.fb")
  
             embedder = GemmaEmbeddingModel(embeddingModelPath, sentencePieceModelPath, false)
             activeBackend = "CPU"
@@ -74,10 +80,10 @@ object EmManager {
         }
     }
 
-    suspend fun ragPrompt(userQuery: String): String = withContext(Dispatchers.IO) {
+    suspend fun ragPrompt(userQuery: String): Pair<String?, String> = withContext(Dispatchers.IO) {
         val embedderInstance = embedder
         if (embedderInstance == null) {
-            return@withContext "Error: Embedder is not initialized."
+            return@withContext Pair(null, "Error: Embedder is not initialized.")
         }
 
         // --- STEP 1: EMBED THE USER QUERY ---
@@ -94,11 +100,12 @@ object EmManager {
         val queryVector: FloatArray? = queryResult?.toFloatArray()
 
         if (queryVector == null) {
-            return@withContext "Error: Could not generate embedding for query."
+            return@withContext Pair(null, "Error: Could not generate embedding for query.")
         }
 
         // --- STEP 2: SEARCH FOR CONTEXT ---
         var bestMatch = ""
+        var bestImage: String? = null
         var highestScore = -1f
 
         for (entry in localDatabase) {
@@ -106,10 +113,12 @@ object EmManager {
             if (similarityScore > highestScore) {
                 highestScore = similarityScore
                 bestMatch = entry.text
+                bestImage = entry.image
             }
         }
         Log.i("RagPrompt", "Highest score: $highestScore")
         if (highestScore >= 0.28) {
+            lastMatchedImage = bestImage
             val ragPrompt = """
             <start_of_turn> user
               <context>
@@ -120,9 +129,10 @@ object EmManager {
             <end_of_turn>
             <start_of_turn> model
         """.trimIndent()
-            ragPrompt
+            Pair(bestImage, ragPrompt)
         } else {
-            "Not Found"
+            lastMatchedImage = null
+            Pair(null, "Not Found")
         }
     }
 

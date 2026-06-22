@@ -1,4 +1,5 @@
 import os
+import json
 import struct
 import math
 import numpy as np
@@ -65,7 +66,7 @@ def main():
     
     model_path = os.path.join(script_dir, "embeddinggemma-300M_seq256_mixed-precision.tflite")
     sp_path = os.path.join(script_dir, "sentencepiece.model")
-    txt_path = os.path.join(project_root, "assets", "ko.txt")
+    jsonl_path = os.path.join(project_root, "assets", "ko.jsonl")
     fb_path = os.path.join(project_root, "assets", "ko.fb")
     
     print("Loading sentencepiece tokenizer...")
@@ -80,20 +81,36 @@ def main():
     input_index = input_details[0]['index']
     output_index = output_details[0]['index']
     
-    print(f"Reading text from {txt_path}...")
-    with open(txt_path, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-        
+    print(f"Reading JSONL from {jsonl_path}...")
+    
     embeddings = []
     count = 0
-    for idx, line in enumerate(lines):
-        line = line.strip()
-        if not line:
-            continue
-        print(f"Generating embedding for entry {idx+1}/{len(lines)}...")
-        emb = get_embedding(interpreter, sp, line, input_index, output_index)
-        embeddings.append(emb)
-        count += 1
+    
+    with open(jsonl_path, "r", encoding="utf-8") as f:
+        for idx, line in enumerate(f):
+            line = line.strip()
+            if not line:
+                continue
+            
+            try:
+                data = json.loads(line)
+                questions = data.get("questions", [])
+                answer = data.get("answer", "")
+                
+                canonical = questions[0] if len(questions) > 0 else ""
+                variants = questions[1:] if len(questions) > 1 else []
+                
+                text_to_embed = f"[Questions] {canonical}. "
+                if variants:
+                    text_to_embed += ", ".join(variants) + ". "
+                text_to_embed += f"[Answer] {answer}."
+                
+                print(f"Generating embedding for entry {idx+1}: {canonical[:40]}...")
+                emb = get_embedding(interpreter, sp, text_to_embed, input_index, output_index)
+                embeddings.append(emb)
+                count += 1
+            except Exception as e:
+                print(f"Error parsing line {idx+1}: {e}")
         
     print(f"Generated {count} embeddings. Building FlatBuffer...")
     fb_data = make_flatbuffer(embeddings)
@@ -102,7 +119,7 @@ def main():
     with open(fb_path, "wb") as f:
         f.write(fb_data)
         
-    print("Embedding database reconstruction complete!")
+    print("Embedding database reconstruction from JSONL complete!")
 
 if __name__ == "__main__":
     main()
