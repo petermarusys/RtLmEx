@@ -92,6 +92,14 @@ object EmManager {
     }
 
     suspend fun ragPrompt(userQuery: String): Pair<String?, String> = withContext(Dispatchers.IO) {
+        val locale = java.util.Locale.getDefault()
+        val lang = locale.language.lowercase()
+        val userLanguage = when (lang) {
+            "ko" -> "korean"
+            "fr" -> "french"
+            else -> "english"
+        }
+
         val embedderInstance = embedder
         if (embedderInstance == null) {
             return@withContext Pair(null, "Error: Embedder is not initialized.")
@@ -135,7 +143,7 @@ object EmManager {
               <context>
                 $bestMatch
               </context>
-              Answer the question based on the provided <context> above:
+              Answer the question in $userLanguage based on the provided <context> above:
               Question: $userQuery  
             <end_of_turn>
             <start_of_turn> model
